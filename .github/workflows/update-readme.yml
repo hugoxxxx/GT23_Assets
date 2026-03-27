@@ -54,17 +54,17 @@ jobs:
             echo -e "</div>\n</details>\n" >> list.md
           done
 
-          # 3. 核心修复：显式写全 sed 模式，防止 "no previous regular expression" 错误
+          # 3. 核心修复：使用更稳健的 sed 逻辑清空内容
           if ! grep -q "" README.md; then
             echo "❌ 错误：README.md 缺少占位符锚点"
             exit 1
           fi
 
-          # 清理旧内容：显式指定起始和结束标记
+          # 先用 sed 物理清空两个标记中间的所有行（保留标记本身）
           sed -i '//,//{ //n; //!d; }' README.md
           sed -i '//,//{ //n; //!d; }' README.md
 
-          # 插入新内容
+          # 再用 awk 将新生成的文件注入
           awk '
             // { print; system("cat diff.md"); next }
             //   { print; system("cat list.md"); next }
