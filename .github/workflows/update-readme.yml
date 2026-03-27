@@ -14,7 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate README
         run: |
@@ -35,7 +36,7 @@ jobs:
           fi
 
           echo "" >> diff.md
-          echo "### 🗑️ 本次删除" >> diff.md
+          echo "### 🗑️ 本次删除"
           if [ -n "$deleted" ]; then
             for f in $deleted; do
               name=$(basename "$f" .png)
@@ -45,7 +46,7 @@ jobs:
             echo "无" >> diff.md
           fi
 
-          # 生成可折叠品牌卡片列表
+          # 可折叠品牌列表
           echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
 
@@ -81,8 +82,11 @@ jobs:
               ok{print}
           ' README.md > tmp && mv tmp README.md
 
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Style: collapsible + clean layout"
-          file_pattern: README.md
+      - name: Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull origin main
+          git add README.md
+          git commit -m "Update README with collapsible logos"
+          git push origin main
