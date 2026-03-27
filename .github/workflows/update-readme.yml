@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
 
       - name: Generate README
         run: |
@@ -45,11 +45,7 @@ jobs:
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
               
-              # ✅ 统一尺寸：2.8:1 比例（宽度140px / 高度50px）
-              echo "<div style='text-align:center;'>
-              <img src='$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'>
-              <br><small style='font-size:12px; color:#666;'>$model</small>
-              </div>" >> list.md
+              echo "<div style='text-align:center;'><img src='$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
             
             echo "</div>" >> list.md
@@ -65,10 +61,8 @@ jobs:
               ok{print}
           ' README.md > tmp && mv tmp README.md
 
-      - name: Force push changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git commit -m "Fixed: uniform 2.8:1 card size + horizontal layout"
-          git push origin main --force
+      - name: Auto Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update README"
+          file_pattern: README.md
