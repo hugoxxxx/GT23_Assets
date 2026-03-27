@@ -3,30 +3,39 @@ import re
 
 def update_readme():
     logo_dir = 'logos'
-    # 1. 扫描文件
     if not os.path.exists(logo_dir): return
-    files = sorted([f for f in os.listdir(logo_dir) if f.endswith('.png')])
     
-    # 2. 生成新内容
-    list_content = [f"\n> 自动统计：目前已收录 **{len(files)}** 款相机品牌标识\n"]
-    # ... (生成 HTML 的逻辑保持不变) ...
-    new_logo_list = "".join(list_content)
+    files = sorted([f for f in os.listdir(logo_dir) if f.endswith('.png')])
+    brands = sorted(list(set(f.split('-')[0] for f in files)))
+    
+    # 1. 生成新的 Logo 列表 HTML
+    list_html = [f"\n> 自动统计：目前已收录 **{len(files)}** 款相机品牌标识\n"]
+    for brand in brands:
+        brand_upper = brand.upper()
+        list_html.append(f"<details>\n<summary><b>{brand_upper}</b></summary>\n<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>")
+        
+        brand_files = sorted([f for f in files if f.startswith(f"{brand}-")])
+        for f in brand_files:
+            model = f.split('-', 1)[1].replace('.png', '')
+            raw_url = f"https://raw.githubusercontent.com/hugoxxxx/GT23_Assets/main/logos/{f}"
+            list_html.append(f"  <div style='text-align:center;'><img src='{raw_url}' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>{model}</small></div>")
+        
+        list_html.append("</div>\n</details>\n")
+    
+    new_logo_list = "".join(list_html)
 
-    # 3. 读取 README
+    # 2. 读取 README 并执行“清空式”替换
     with open('README.md', 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # 4. 【核心修复】精准替换逻辑
-    # 使用 re.DOTALL 确保点号匹配换行符
-    # 使用 [\s\S]*? (非贪婪匹配) 确保只替换两个标记中间的内容，而不是整个文件
-    log_pattern = r"()[\s\S]*?()"
-    list_pattern = r"()[\s\S]*?()"
-    
-    # 替换内容（保留占位符标签本身）
-    content = re.sub(log_pattern, r"\1\n\2", content) # 暂时清空日志或按需填入
-    content = re.sub(list_pattern, f"\\1\n{new_logo_list}\n\\2", content)
+    # 使用 re.DOTALL 让 . 匹配换行符
+    # 这里的关键是 [\s\S]*? 它会抓取 START 和 END 之间所有的乱码并替换掉
+    content = re.sub(
+        r'[\s\S]*?',
+        f'\n{new_logo_list}\n',
+        content
+    )
 
-    # 5. 安全写入
     with open('README.md', 'w', encoding='utf-8') as f:
         f.write(content)
 
