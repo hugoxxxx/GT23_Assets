@@ -33,7 +33,8 @@ jobs:
           echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
 
-          brands=$(ls logos/*.png 2>/dev/null | xargs -n1 basename .png | cut -d'-' -f1 | sort -u | uniq)
+          # ✅ 关键修复：先去掉 .png 后缀，再提取品牌
+          brands=$(for f in logos/*.png; do basename "$f" .png; done | cut -d'-' -f1 | sort -u | uniq)
 
           for brand in ${brands}; do
             echo "<details>" >> list.md
@@ -42,8 +43,8 @@ jobs:
             
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
-              filename=$(basename "$img" .png)
-              model=$(echo "$filename" | cut -d'-' -f2-)
+              filename=$(basename "$img" .png)  # 先去后缀
+              model=$(echo "$filename" | cut -d'-' -f2-)  # 提取型号
               echo "<div style='text-align:center;'><img src='$img' width='70' style='padding:8px; background:#f8f9fa; border-radius:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
             
@@ -65,5 +66,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
-          git commit -m "Update README with horizontal layout"
+          git commit -m "Fix brand parsing to avoid .png"
           git push origin main --force
