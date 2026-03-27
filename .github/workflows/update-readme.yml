@@ -1,51 +1,37 @@
-name: Update README with Logos
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'logos/**'
-  workflow_dispatch:
-
-jobs:
-  update-readme:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Generate README
+- name: Generate README
         run: |
-          added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
-          deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
+          # 1. 健壮地获取 diff（防止单次提交无父节点报错）
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
+            deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
+          else
+            added=$(find logos -name "*.png")
+            deleted=""
+          fi
 
-          cat > diff.md <<EOF
-          ### ✅ 本次新增
-          EOF
-          if [ -n "$added" ]; then for f in $added; do name=$(basename "$f" .png); echo "- \`$name\`" >> diff.md; done; else echo "无" >> diff.md; fi
-          echo "" >> diff.md
-          echo "### 🗑️ 本次删除" >> diff.md
-          if [ -n "$deleted" ]; then for f in $deleted; do name=$(basename "$f" .png); echo "- \`$name\`" >> diff.md; done; else echo "无" >> diff.md; fi
+          # 2. 生成更新日志
+          echo "### ✅ 本次新增" > diff.md
+          if [ -z "$added" ]; then echo "无" >> diff.md; else for f in $added; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
+          echo -e "\n### 🗑️ 本次删除" >> diff.md
+          if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
+          # 3. 生成 Logo 列表（带品牌折叠）
           echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
-
-          brands=$(for f in logos/*.png; do basename "$f" .png; done | cut -d'-' -f1 | sort -u | uniq)
+          
+          # 获取品牌列表并排序
+          brands=$(ls logos/*.png 2>/dev/null | xargs -n 1 basename | cut -d'-' -f1 | sort -u)
 
           for brand in ${brands}; do
             echo "<details>" >> list.md
-            echo "<summary><b>${brand}</b></summary>" >> list.md
+            echo "<summary><b>${brand^^}</b></summary>" >> list.md # 品牌名大写增加美感
             echo "<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
             
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
-              
-              echo "<div style='text-align:center;'><img src='$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
+              echo "<div style='text-align:center;'><img src='https://raw.githubusercontent.com/${{ github.repository }}/main/$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
             
             echo "</div>" >> list.md
@@ -53,16 +39,12 @@ jobs:
             echo "" >> list.md
           done
 
+          # 4. 精准替换 README（增加 BEGIN{ok=1}）
           awk '
-              /<!-- AUTO-UPDATE-LOG:START -->/ {print; system("cat diff.md"); print "<!-- AUTO-UPDATE-LOG:END -->"; ok=0; next}
-              /<!-- AUTO-UPDATE-LOG:END -->/ {ok=1; next}
-              /<!-- AUTO-LOGO-LIST:START -->/ {print; system("cat list.md"); print "<!-- AUTO-LOGO-LIST:END -->"; ok=0; next}
-              /<!-- AUTO-LOGO-LIST:END -->/ {ok=1; next}
-              ok{print}
+            BEGIN{ok=1}
+            // {print; system("cat diff.md"); ok=0; next}
+            // {ok=1; next}
+            // {print; system("cat list.md"); ok=0; next}
+            // {ok=1; next}
+            ok{print}
           ' README.md > tmp && mv tmp README.md
-
-      - name: Auto Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update README"
-          file_pattern: README.md
