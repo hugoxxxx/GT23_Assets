@@ -1,26 +1,4 @@
-name: Update README with Logos
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'logos/**'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  pull-requests: write
-
-jobs:
-  update-readme:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
-
-      - name: Generate Content
+- name: Generate Content
         run: |
           # 1. 获取变更情况
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
@@ -54,30 +32,15 @@ jobs:
             echo -e "</div>\n</details>\n" >> list.md
           done
 
-          # 3. 核心修复：使用更稳健的 sed 逻辑清空内容
-          if ! grep -q "" README.md; then
-            echo "❌ 错误：README.md 缺少占位符锚点"
-            exit 1
-          fi
-
-          # 先用 sed 物理清空两个标记中间的所有行（保留标记本身）
-          sed -i '//,//{ //n; //!d; }' README.md
-          sed -i '//,//{ //n; //!d; }' README.md
-
-          # 再用 awk 将新生成的文件注入
+          # 3. 核心修复：舍弃 sed，改用纯 awk 处理“清理+注入”
+          # 这样可以完全避开 sed 的模式匹配报错
           awk '
-            // { print; system("cat diff.md"); next }
-            //   { print; system("cat list.md"); next }
-            { print }
+            BEGIN { skip = 0 }
+            // { print; system("cat diff.md"); skip = 1; next }
+            //   { print; skip = 0; next }
+            // { print; system("cat list.md"); skip = 1; next }
+            //   { print; skip = 0; next }
+            !skip { print }
           ' README.md > README.tmp && mv README.tmp README.md
           
           rm diff.md list.md
-
-      - name: Auto Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "🤖 自动更新 README [skip ci]"
-          file_pattern: README.md
-          commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
-          push_options: '--force'
-          skip_fetch: false
