@@ -1,34 +1,11 @@
-name: Update README with Logos
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'logos/**'
-  workflow_dispatch: # 允许手动点击运行
-
-# 全局权限：必须开启内容写入权限
-permissions:
-  contents: write
-  pull-requests: write
-
-jobs:
-  update-readme:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 获取完整历史以正确计算 diff
-
-      - name: Generate Content
+- name: Generate Content
         run: |
-          # 1. 差异分析 (diff.md)
+          # 1. 获取变更情况
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
             deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
           else
-            added=$(find logos -name "*.png" | head -n 15)
+            added=$(find logos -name "*.png" | head -n 10)
             deleted=""
           fi
 
@@ -37,51 +14,32 @@ jobs:
           echo -e "\n### 🗑️ 本次删除" >> diff.md
           if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
-          # 2. 生成列表 (list.md)
+          # 2. 生成列表
           echo "## 🖼️ Logo 列表" > list.md
           echo -e "\n> 自动统计：目前已收录 **$(ls logos/*.png 2>/dev/null | wc -l)** 款相机品牌标识\n" >> list.md
-          
           brands=$(ls logos/*.png 2>/dev/null | xargs -n 1 basename | cut -d'-' -f1 | sort -u)
-
           for brand in ${brands}; do
             BRAND_UPPER=$(echo "$brand" | tr '[:lower:]' '[:upper:]')
-            echo "<details>" >> list.md
-            echo "<summary><b>$BRAND_UPPER</b></summary>" >> list.md
-            echo "<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
-            
+            echo -e "<details>\n<summary><b>$BRAND_UPPER</b></summary>\n<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
-              filename=$(basename "$img" .png)
-              model=$(echo "$filename" | cut -d'-' -f2-)
-              raw_url="https://raw.githubusercontent.com/${{ github.repository }}/main/$img"
-              echo "<div style='text-align:center;'><img src='$raw_url' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
+              model=$(basename "$img" .png | cut -d'-' -f2-)
+              echo "<div style='text-align:center;'><img src='https://raw.githubusercontent.com/${{ github.repository }}/main/$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
-            
-            echo "</div>" >> list.md
-            echo "</details>" >> list.md
-            echo "" >> list.md
+            echo -e "</div>\n</details>\n" >> list.md
           done
 
-          # 3. 精准注入 README (使用状态位控制，防止套娃)
-          cp README.md README.orig
-          awk '
-            BEGIN { ok = 1 }
-            // { print; system("cat diff.md"); ok = 0; next }
-            //   { print; ok = 1; next }
-            // { print; system("cat list.md"); ok = 0; next }
-            //   { print; ok = 1; next }
-            ok { print }
-          ' README.orig > README.md
-          
-          # 清理工作
-          rm README.orig diff.md list.md
+          # 3. 终极强力替换逻辑
+          # 检查 README 是否包含占位符，如果不包含，直接报错停止，防止污染
+          if ! grep -q "" README.md; then
+            echo "错误：README.md 缺少占位符锚点，请检查第一步是否完成！"
+            exit 1
+          fi
 
-      - name: Auto Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "🤖 自动更新 README [skip ci]"
-          file_pattern: README.md
-          commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
-          # 核心修复：开启强制推送，解决分叉冲突
-          push_options: '--force'
-          skip_fetch: false
+          # 使用 sed 先把旧内容（START和END之间的）全部删掉，再用 awk 插入
+          # 这样可以确保无论中间有多少乱码，都会被一扫而空
+          sed -i '//,//{//!d}' README.md
+          sed -i '//,//{//!d}' README.md
+
+          # 现在用 awk 把新内容塞进空出来的位置
+          awk '//{print;system("cat diff.md")}//{print;system("cat list.md")}!//&&!//' README.md > temp.md && mv temp.md README.md
