@@ -19,58 +19,39 @@ jobs:
 
       - name: Generate README
         run: |
-          # 获取变更
           added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
           deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
 
-          # 生成更新日志
           cat > diff.md <<EOF
           ### ✅ 本次新增
           EOF
-          if [ -n "$added" ]; then
-            for f in $added; do
-              name=$(basename "$f" .png)
-              echo "- \`$name\`" >> diff.md
-            done
-          else
-            echo "无" >> diff.md
-          fi
-
+          if [ -n "$added" ]; then for f in $added; do name=$(basename "$f" .png); echo "- \`$name\`" >> diff.md; done; else echo "无" >> diff.md; fi
           echo "" >> diff.md
-          echo "### 🗑️ 本次删除"
-          if [ -n "$deleted" ]; then
-            for f in $deleted; do
-              name=$(basename "$f" .png)
-              echo "- \`$name\`" >> diff.md
-            done
-          else
-            echo "无" >> diff.md
-          fi
+          echo "### 🗑️ 本次删除" >> diff.md
+          if [ -n "$deleted" ]; then for f in $deleted; do name=$(basename "$f" .png); echo "- \`$name\`" >> diff.md; done; else echo "无" >> diff.md; fi
 
-          # 可折叠品牌卡片
           echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
 
-          brands=$(ls logos/*.png 2>/dev/null | xargs -n1 basename | cut -d'-' -f1 | sort -u | uniq)
+          brands=$(ls logos/*.png 2>/dev/null | xargs -n1 basename .png | cut -d'-' -f1 | sort -u | uniq)
 
           for brand in ${brands}; do
             echo "<details>" >> list.md
             echo "<summary><b>${brand}</b></summary>" >> list.md
-            echo "" >> list.md
+            echo "<div style='display:flex; flex-wrap:wrap; gap:12px; margin:10px 0;'>" >> list.md
             
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
-              echo "<div style='display:inline-block; margin:5px; text-align:center;'><img src='$img' width='70' style='padding:6px;background:#f8f9fa;border-radius:8px;'/><br><small style='font-size:11px;color:#888;'>$model</small></div>" >> list.md
+              echo "<div style='text-align:center;'><img src='$img' width='70' style='padding:8px; background:#f8f9fa; border-radius:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
             
-            echo "" >> list.md
+            echo "</div>" >> list.md
             echo "</details>" >> list.md
             echo "" >> list.md
           done
 
-          # 写入 README
           awk '
               /<!-- AUTO-UPDATE-LOG:START -->/ {print; system("cat diff.md"); print "<!-- AUTO-UPDATE-LOG:END -->"; ok=0; next}
               /<!-- AUTO-UPDATE-LOG:END -->/ {ok=1; next}
@@ -82,5 +63,5 @@ jobs:
       - name: Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Update README"
+          commit_message: "Style: flex horizontal layout"
           file_pattern: README.md
