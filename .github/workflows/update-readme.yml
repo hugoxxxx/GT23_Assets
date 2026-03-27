@@ -7,6 +7,7 @@ on:
       - 'logos/**'
   workflow_dispatch: # 允许手动点击运行
 
+# 全局权限：必须开启内容写入权限
 permissions:
   contents: write
   pull-requests: write
@@ -18,11 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0 # 获取完整历史以正确计算 diff
 
       - name: Generate Content
         run: |
-          # 1. 差异分析：获取新增和删除的文件名
+          # 1. 差异分析 (diff.md)
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
             deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
@@ -31,13 +32,12 @@ jobs:
             deleted=""
           fi
 
-          # 2. 格式化生成更新日志 (diff.md)
           echo "### ✅ 本次新增" > diff.md
           if [ -z "$added" ]; then echo "无" >> diff.md; else for f in $added; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
           echo -e "\n### 🗑️ 本次删除" >> diff.md
           if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
-          # 3. 遍历目录生成品牌列表 (list.md)
+          # 2. 生成列表 (list.md)
           echo "## 🖼️ Logo 列表" > list.md
           echo -e "\n> 自动统计：目前已收录 **$(ls logos/*.png 2>/dev/null | wc -l)** 款相机品牌标识\n" >> list.md
           
@@ -53,7 +53,6 @@ jobs:
               [ -e "$img" ] || continue
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
-              # 指向 GitHub Raw 的高清地址
               raw_url="https://raw.githubusercontent.com/${{ github.repository }}/main/$img"
               echo "<div style='text-align:center;'><img src='$raw_url' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
@@ -63,7 +62,7 @@ jobs:
             echo "" >> list.md
           done
 
-          # 4. 精准注入 README（核心修复部分）
+          # 3. 精准注入 README (使用状态位控制，防止套娃)
           cp README.md README.orig
           awk '
             BEGIN { ok = 1 }
@@ -73,6 +72,8 @@ jobs:
             //   { print; ok = 1; next }
             ok { print }
           ' README.orig > README.md
+          
+          # 清理工作
           rm README.orig diff.md list.md
 
       - name: Auto Commit
@@ -81,3 +82,6 @@ jobs:
           commit_message: "🤖 自动更新 README [skip ci]"
           file_pattern: README.md
           commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          # 核心修复：开启强制推送，解决分叉冲突
+          push_options: '--force'
+          skip_fetch: false
