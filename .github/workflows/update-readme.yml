@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'logos/**'
+  # 手动触发开关
+  workflow_dispatch:
 
 jobs:
   update-readme:
@@ -11,6 +13,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      # ... 后面的代码保持不变 ...
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
