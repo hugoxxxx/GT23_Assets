@@ -1,0 +1,72 @@
+name: Update README with Logos
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'logos/**'
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Generate logo list & changes
+        run: |
+          added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
+          deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
+
+          # 生成更新记录
+          cat > diff.md <<EOF
+          ### ✅ 本次新增
+          EOF
+          if [ -z "$added" ]; then
+            echo "无" >> diff.md
+          else
+            for f in $added; do
+              name=$(basename "$f" .png)
+              echo "- \`$name\`" >> diff.md
+            done
+          fi
+
+          echo "" >> diff.md
+          echo "### 🗑️ 本次删除" >> diff.md
+
+          if [ -z "$deleted" ]; then
+            echo "无" >> diff.md
+          else
+            for f in $deleted; do
+              name=$(basename "$f" .png)
+              echo "- \`$name\`" >> diff.md
+            done
+          fi
+
+          # 生成 Logo 列表
+          echo "| 品牌 | 型号 | Logo |" > list.md
+          echo "|------|------|------|" >> list.md
+          shopt -s nullglob
+          for img in logos/*.png; do
+            name=$(basename "$img" .png)
+            brand=$(echo "$name" | cut -d'-' -f1)
+            model=$(echo "$name" | cut -d'-' -f2-)
+            echo "| $brand | $model | ![$name]($img) |" >> list.md
+          done
+
+          # 替换 README
+          awk '
+              /<!-- AUTO-UPDATE-LOG:START -->/ {print; system("cat diff.md"); print "<!-- AUTO-UPDATE-LOG:END -->"; ok=0; next}
+              /<!-- AUTO-UPDATE-LOG:END -->/ {ok=1; next}
+              /<!-- AUTO-LOGO-LIST:START -->/ {print; system("cat list.md"); print "<!-- AUTO-LOGO-LIST:END -->"; ok=0; next}
+              /<!-- AUTO-LOGO-LIST:END -->/ {ok=1; next}
+              ok{print}
+          ' README.md > tmp && mv tmp README.md
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto update README"
+          file_pattern: README.md
