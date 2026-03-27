@@ -15,14 +15,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          token: ${{ github.token }}
 
       - name: Generate README
         run: |
+          # 获取变更
           added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
           deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
 
-          # 生成更新记录
+          # 生成更新日志
           cat > diff.md <<EOF
           ### ✅ 本次新增
           EOF
@@ -46,7 +47,7 @@ jobs:
             echo "无" >> diff.md
           fi
 
-          # 可折叠品牌列表
+          # 可折叠品牌卡片
           echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
 
@@ -61,11 +62,7 @@ jobs:
               [ -e "$img" ] || continue
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
-              
-              echo "<div style='display:inline-block; margin:5px; text-align:center;'>
-              <img src='$img' width='70' style='padding:6px; background:#f8f9fa; border-radius:8px;'/><br>
-              <small style='font-size:11px; color:#888;'>$model</small>
-              </div>" >> list.md
+              echo "<div style='display:inline-block; margin:5px; text-align:center;'><img src='$img' width='70' style='padding:6px;background:#f8f9fa;border-radius:8px;'/><br><small style='font-size:11px;color:#888;'>$model</small></div>" >> list.md
             done
             
             echo "" >> list.md
@@ -73,7 +70,7 @@ jobs:
             echo "" >> list.md
           done
 
-          # 替换 README
+          # 写入 README
           awk '
               /<!-- AUTO-UPDATE-LOG:START -->/ {print; system("cat diff.md"); print "<!-- AUTO-UPDATE-LOG:END -->"; ok=0; next}
               /<!-- AUTO-UPDATE-LOG:END -->/ {ok=1; next}
@@ -82,11 +79,8 @@ jobs:
               ok{print}
           ' README.md > tmp && mv tmp README.md
 
-      - name: Push changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull origin main
-          git add README.md
-          git commit -m "Update README with collapsible logos"
-          git push origin main
+      - name: Auto Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update README"
+          file_pattern: README.md
