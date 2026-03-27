@@ -4,7 +4,6 @@ on:
     branches: [main]
     paths:
       - 'logos/**'
-  # 手动触发开关
   workflow_dispatch:
 
 jobs:
@@ -13,7 +12,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      # ... 后面的代码保持不变 ...
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
@@ -48,15 +46,22 @@ jobs:
             done
           fi
 
-          # 生成 Logo 列表
-          echo "| 品牌 | 型号 | Logo |" > list.md
-          echo "|------|------|------|" >> list.md
-          shopt -s nullglob
-          for img in logos/*.png; do
-            name=$(basename "$img" .png)
-            brand=$(echo "$name" | cut -d'-' -f1)
-            model=$(echo "$name" | cut -d'-' -f2-)
-            echo "| $brand | $model | ![$name]($img) |" >> list.md
+          # 品牌分组 + 卡片式布局
+          echo "## 🖼️ 相机 Logo 列表" > list.md
+          echo "" >> list.md
+
+          brands=$(ls logos/*.png 2>/dev/null | xargs -n1 basename | cut -d'-' -f1 | sort -u | uniq)
+
+          for brand in ${brands}; do
+            echo "### 📌 ${brand}" >> list.md
+            echo "" >> list.md
+            
+            for img in logos/${brand}-*.png; do
+              [ -e "$img" ] || continue
+              filename=$(basename "$img" .png)
+              model=$(echo "$filename" | cut -d'-' -f2-)
+              
+              echo "<div style='display:inline-block; margin:10px; text-align:center; vertical-align:top;'><img src='${img}' width='100' style='object-fit:contain; background:#f6f8fa; padding:8px; border-radius:6px;'/><br/><small style='color:#666; font-size:12px;'>${model}</small></div>" >> list.md
           done
 
           # 替换 README
@@ -71,5 +76,5 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto update README"
+          commit_message: "Auto update README with beautiful layout"
           file_pattern: README.md
