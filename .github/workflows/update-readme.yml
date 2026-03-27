@@ -16,45 +16,44 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Generate logo list & changes
+      - name: Generate README
         run: |
-          # 提取新增/删除文件
           added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
           deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
 
-          # 生成更新日志
-          cat > diff.md <<'EOF'
+          # 生成更新记录
+          cat > diff.md <<EOF
           ### ✅ 本次新增
           EOF
-          if [ -z "$added" ]; then
-            echo "无" >> diff.md
-          else
+          if [ -n "$added" ]; then
             for f in $added; do
               name=$(basename "$f" .png)
               echo "- \`$name\`" >> diff.md
             done
+          else
+            echo "无" >> diff.md
           fi
 
           echo "" >> diff.md
           echo "### 🗑️ 本次删除" >> diff.md
-
-          if [ -z "$deleted" ]; then
-            echo "无" >> diff.md
-          else
+          if [ -n "$deleted" ]; then
             for f in $deleted; do
               name=$(basename "$f" .png)
               echo "- \`$name\`" >> diff.md
             done
+          else
+            echo "无" >> diff.md
           fi
 
-          # 生成品牌分组卡片列表
-          echo "## 🖼️ 相机 Logo 列表" > list.md
+          # 生成可折叠品牌卡片列表
+          echo "## 🖼️ Logo 列表" > list.md
           echo "" >> list.md
 
           brands=$(ls logos/*.png 2>/dev/null | xargs -n1 basename | cut -d'-' -f1 | sort -u | uniq)
 
           for brand in ${brands}; do
-            echo "### 📌 ${brand}" >> list.md
+            echo "<details>" >> list.md
+            echo "<summary><b>${brand}</b></summary>" >> list.md
             echo "" >> list.md
             
             for img in logos/${brand}-*.png; do
@@ -62,25 +61,28 @@ jobs:
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
               
-              echo "<div style='display:inline-block; margin:10px; text-align:center; vertical-align:top;'><img src='${img}' width='100' style='object-fit:contain; background:#f6f8fa; padding:8px; border-radius:6px;'/><br/><small style='color:#666; font-size:12px;'>${model}</small></div>" >> list.md
+              echo "<div style='display:inline-block; margin:5px; text-align:center;'>
+              <img src='$img' width='70' style='padding:6px; background:#f8f9fa; border-radius:8px;'/><br>
+              <small style='font-size:11px; color:#888;'>$model</small>
+              </div>" >> list.md
             done
             
             echo "" >> list.md
-            echo "<hr/>" >> list.md
+            echo "</details>" >> list.md
             echo "" >> list.md
           done
 
-          # 替换 README（用双引号包裹 awk 脚本避免引号冲突）
-          awk "
-              /<!-- AUTO-UPDATE-LOG:START -->/ {print; system(\"cat diff.md\"); print \"<!-- AUTO-UPDATE-LOG:END -->\"; ok=0; next}
+          # 替换 README
+          awk '
+              /<!-- AUTO-UPDATE-LOG:START -->/ {print; system("cat diff.md"); print "<!-- AUTO-UPDATE-LOG:END -->"; ok=0; next}
               /<!-- AUTO-UPDATE-LOG:END -->/ {ok=1; next}
-              /<!-- AUTO-LOGO-LIST:START -->/ {print; system(\"cat list.md\"); print \"<!-- AUTO-LOGO-LIST:END -->\"; ok=0; next}
+              /<!-- AUTO-LOGO-LIST:START -->/ {print; system("cat list.md"); print "<!-- AUTO-LOGO-LIST:END -->"; ok=0; next}
               /<!-- AUTO-LOGO-LIST:END -->/ {ok=1; next}
               ok{print}
-          " README.md > tmp && mv tmp README.md
+          ' README.md > tmp && mv tmp README.md
 
-      - name: Commit changes
+      - name: Commit
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Fix syntax error & update README"
+          commit_message: "Style: collapsible + clean layout"
           file_pattern: README.md
