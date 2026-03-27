@@ -1,20 +1,44 @@
-- name: Generate Content
+name: Update README with Logos
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'logos/**'
+  workflow_dispatch: # 允许手动点击运行
+
+# 全局权限：必须开启内容写入权限
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Generate Content
         run: |
-          # 1. 获取变更情况
+          # 1. 差异分析：获取本次提交的增删情况
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
             deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
           else
-            added=$(find logos -name "*.png" | head -n 15)
+            added=$(find logos -name "*.png" | head -n 10)
             deleted=""
           fi
 
+          # 生成临时更新日志 (diff.md)
           echo "### ✅ 本次新增" > diff.md
           if [ -z "$added" ]; then echo "无" >> diff.md; else for f in $added; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
           echo -e "\n### 🗑️ 本次删除" >> diff.md
           if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
-          # 2. 生成列表
+          # 2. 生成完整列表 (list.md)
           echo "## 🖼️ Logo 列表" > list.md
           echo -e "\n> 自动统计：目前已收录 **$(ls logos/*.png 2>/dev/null | wc -l)** 款相机品牌标识\n" >> list.md
           
@@ -23,17 +47,25 @@
           for brand in ${brands}; do
             BRAND_UPPER=$(echo "$brand" | tr '[:lower:]' '[:upper:]')
             echo -e "<details>\n<summary><b>$BRAND_UPPER</b></summary>\n<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
+            
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
-              model=$(basename "$img" .png | cut -d'-' -f2-)
+              filename=$(basename "$img" .png)
+              model=$(echo "$filename" | cut -d'-' -f2-)
               raw_url="https://raw.githubusercontent.com/${{ github.repository }}/main/$img"
               echo "<div style='text-align:center;'><img src='$raw_url' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
+            
             echo -e "</div>\n</details>\n" >> list.md
           done
 
-          # 3. 核心修复：舍弃 sed，改用纯 awk 处理“清理+注入”
-          # 这样可以完全避开 sed 的模式匹配报错
+          # 3. 核心修复：纯 awk 处理，彻底抛弃 sed
+          # 逻辑：遇到 START 打印标记并塞入新文件，设 skip=1；遇到 END 打印标记，设 skip=0。
+          if ! grep -q "" README.md; then
+            echo "❌ 错误：README.md 缺少占位符锚点"
+            exit 1
+          fi
+
           awk '
             BEGIN { skip = 0 }
             // { print; system("cat diff.md"); skip = 1; next }
@@ -44,3 +76,12 @@
           ' README.md > README.tmp && mv README.tmp README.md
           
           rm diff.md list.md
+
+      - name: Auto Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 自动更新 README [skip ci]"
+          file_pattern: README.md
+          commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          push_options: '--force'
+          skip_fetch: false
