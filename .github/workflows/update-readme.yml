@@ -5,9 +5,8 @@ on:
     branches: [main]
     paths:
       - 'logos/**'
-  workflow_dispatch: # 允许在 GitHub 页面手动点击 "Run workflow"
+  workflow_dispatch:
 
-# 设置全局权限，确保 Action 有权修改仓库内容
 permissions:
   contents: write
   pull-requests: write
@@ -19,69 +18,59 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史以正确计算 diff 差异
+          fetch-depth: 0 
 
       - name: Generate Content
         run: |
-          # 1. 差异分析：获取本次 Push 增删了哪些文件
+          # 1. 获取变更情况
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
             deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
           else
-            # 首次运行或找不到父节点时，展示前 10 个文件
-            added=$(find logos -name "*.png" | head -n 10)
+            added=$(find logos -name "*.png" | head -n 15)
             deleted=""
           fi
 
-          # 生成临时的更新日志 (diff.md)
           echo "### ✅ 本次新增" > diff.md
           if [ -z "$added" ]; then echo "无" >> diff.md; else for f in $added; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
           echo -e "\n### 🗑️ 本次删除" >> diff.md
           if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
-          # 2. 遍历 logos 文件夹生成展示墙 (list.md)
+          # 2. 生成列表
           echo "## 🖼️ Logo 列表" > list.md
           echo -e "\n> 自动统计：目前已收录 **$(ls logos/*.png 2>/dev/null | wc -l)** 款相机品牌标识\n" >> list.md
           
-          # 提取品牌名并去重排序
           brands=$(ls logos/*.png 2>/dev/null | xargs -n 1 basename | cut -d'-' -f1 | sort -u)
 
           for brand in ${brands}; do
-            # 品牌名转大写（如 contax 变为 CONTAX）
             BRAND_UPPER=$(echo "$brand" | tr '[:lower:]' '[:upper:]')
             echo -e "<details>\n<summary><b>$BRAND_UPPER</b></summary>\n<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
-            
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
-              filename=$(basename "$img" .png)
-              model=$(echo "$filename" | cut -d'-' -f2-)
-              # 使用 GitHub Raw 绝对路径，确保在不同平台访问都能显示图片
+              model=$(basename "$img" .png | cut -d'-' -f2-)
               raw_url="https://raw.githubusercontent.com/${{ github.repository }}/main/$img"
               echo "<div style='text-align:center;'><img src='$raw_url' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
-            
             echo -e "</div>\n</details>\n" >> list.md
           done
 
-          # 3. 核心注入逻辑：强力清洗并替换
-          # 如果 README 里没锚点，直接报错，防止破坏文件
+          # 3. 核心修复：显式写全 sed 模式，防止 "no previous regular expression" 错误
           if ! grep -q "" README.md; then
-            echo "❌ 错误：README.md 缺少占位符锚点，请先检查 README 内容！"
+            echo "❌ 错误：README.md 缺少占位符锚点"
             exit 1
           fi
 
-          # 第一步：用 sed 清除 START 和 END 之间的所有旧垃圾内容
-          sed -i '//,//{//!d}' README.md
-          sed -i '//,//{//!d}' README.md
+          # 清理旧内容：显式指定起始和结束标记
+          sed -i '//,//{ //n; //!d; }' README.md
+          sed -i '//,//{ //n; //!d; }' README.md
 
-          # 第二步：用 awk 将新生成的 diff.md 和 list.md 插入到标记行下方
+          # 插入新内容
           awk '
             // { print; system("cat diff.md"); next }
             //   { print; system("cat list.md"); next }
             { print }
           ' README.md > README.tmp && mv README.tmp README.md
           
-          # 清理临时文件
           rm diff.md list.md
 
       - name: Auto Commit
@@ -90,6 +79,5 @@ jobs:
           commit_message: "🤖 自动更新 README [skip ci]"
           file_pattern: README.md
           commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
-          # 开启强制推送，解决分叉冲突，确保 Action 结果能成功提交
           push_options: '--force'
           skip_fetch: false
