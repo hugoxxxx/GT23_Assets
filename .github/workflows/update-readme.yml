@@ -1,37 +1,64 @@
-- name: Generate README
+name: Update README with Logos
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'logos/**'
+  workflow_dispatch: # 允许手动触发按钮
+
+# 全局权限设置，确保 GITHUB_TOKEN 有写权限
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 必须设为 0 以获取完整的 commit 历史进行 diff
+
+      - name: Generate Content
         run: |
-          # 1. 健壮地获取 diff（防止单次提交无父节点报错）
+          # 1. 安全获取 diff（防止单次提交无父节点报错）
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             added=$(git diff --name-only --diff-filter=A HEAD^ HEAD | grep '^logos/' || true)
             deleted=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep '^logos/' || true)
           else
-            added=$(find logos -name "*.png")
+            added=$(find logos -name "*.png" | head -n 10) # 首次运行仅列出前10个
             deleted=""
           fi
 
-          # 2. 生成更新日志
+          # 2. 生成本次更新日志 (diff.md)
           echo "### ✅ 本次新增" > diff.md
           if [ -z "$added" ]; then echo "无" >> diff.md; else for f in $added; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
           echo -e "\n### 🗑️ 本次删除" >> diff.md
           if [ -z "$deleted" ]; then echo "无" >> diff.md; else for f in $deleted; do echo "- \`$(basename "$f" .png)\`" >> diff.md; done; fi
 
-          # 3. 生成 Logo 列表（带品牌折叠）
+          # 3. 生成完整 Logo 列表 (list.md)
           echo "## 🖼️ Logo 列表" > list.md
-          echo "" >> list.md
+          echo -e "\n> 自动统计：目前已收录 **$(ls logos/*.png | wc -l)** 款相机品牌标识\n" >> list.md
           
-          # 获取品牌列表并排序
+          # 提取品牌（按文件名第一个横杠前的内容分组）
           brands=$(ls logos/*.png 2>/dev/null | xargs -n 1 basename | cut -d'-' -f1 | sort -u)
 
           for brand in ${brands}; do
+            # 品牌名转大写
+            BRAND_UPPER=$(echo "$brand" | tr '[:lower:]' '[:upper:]')
             echo "<details>" >> list.md
-            echo "<summary><b>${brand^^}</b></summary>" >> list.md # 品牌名大写增加美感
+            echo "<summary><b>$BRAND_UPPER</b></summary>" >> list.md
             echo "<div style='display:flex; flex-wrap:wrap; gap:12px; margin:12px 0;'>" >> list.md
             
             for img in logos/${brand}-*.png; do
               [ -e "$img" ] || continue
               filename=$(basename "$img" .png)
               model=$(echo "$filename" | cut -d'-' -f2-)
-              echo "<div style='text-align:center;'><img src='https://raw.githubusercontent.com/${{ github.repository }}/main/$img' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
+              # 使用 Raw 链接确保图片在任何环境下可见
+              raw_url="https://raw.githubusercontent.com/${{ github.repository }}/main/$img"
+              echo "<div style='text-align:center;'><img src='$raw_url' style='width:140px; height:50px; object-fit:contain; background:#f8f9fa; border-radius:8px; padding:8px;'><br><small style='font-size:12px; color:#666;'>$model</small></div>" >> list.md
             done
             
             echo "</div>" >> list.md
@@ -39,12 +66,20 @@
             echo "" >> list.md
           done
 
-          # 4. 精准替换 README（增加 BEGIN{ok=1}）
+          # 4. 使用 awk 注入 README（增加容错逻辑）
+          # 注意：README.md 中必须包含那四行注释占位符
           awk '
-            BEGIN{ok=1}
+            BEGIN {ok=1}
             // {print; system("cat diff.md"); ok=0; next}
-            // {ok=1; next}
+            // {print; ok=1; next}
             // {print; system("cat list.md"); ok=0; next}
-            // {ok=1; next}
-            ok{print}
-          ' README.md > tmp && mv tmp README.md
+            // {print; ok=1; next}
+            ok {print}
+          ' README.md > README.tmp && mv README.tmp README.md
+
+      - name: Auto Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 自动更新 README [Skip GitHub Actions]"
+          file_pattern: README.md
+          commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
